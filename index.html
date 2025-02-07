@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>약수와 배수 심화(2)</title>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+  <style>
+    body { background-color: white; color: black; font-family: Arial, sans-serif; }
+    .hidden { display: none; }
+    #energyBarContainer { width: 100%; height: 20px; border: 1px solid black; margin: 10px 0; }
+    #energyBar { width: 100%; height: 100%; background-color: black; }
+    button { margin: 5px; }
+    .option-button { display: block; width: 100%; text-align: left; margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <h1>약수와 배수 심화(2)</h1>
+  <!-- 시작 화면: 이름 입력 및 난이도 선택 -->
+  <div id="startScreen">
+    <label for="playerName">이름:</label>
+    <input type="text" id="playerName" />
+    <br>
+    <label for="difficulty">난이도 선택:</label>
+    <select id="difficulty">
+      <option value="최상">최상 (문제당 20점, 20초 제한)</option>
+      <option value="상">상 (문제당 15점, 30초 제한)</option>
+      <option value="중">중 (문제당 13점, 40초 제한)</option>
+      <option value="하">하 (문제당 10점, 제한 없음)</option>
+    </select>
+    <br>
+    <button id="startButton">시작</button>
+  </div>
+
+  <!-- 게임 화면 -->
+  <div id="gameScreen" class="hidden">
+    <div>
+      <span id="scoreDisplay">점수: 0</span> |
+      <span id="chanceDisplay">남은 기회: 3</span> |
+      <span id="timeDisplay">총 게임 시간: 0초</span>
+    </div>
+    <div id="energyBarContainer">
+      <div id="energyBar"></div>
+    </div>
+    <div id="questionContainer">
+      <!-- 문제 내용이 여기에 동적 삽입됩니다. -->
+    </div>
+    <div id="optionsContainer">
+      <!-- 보기가 동적으로 생성됩니다. -->
+    </div>
+    <button id="nextButton" disabled>다음문제</button>
+    <div id="feedback"></div>
+  </div>
+
+  <!-- 종료 화면: 최종 점수 및 점수전송 -->
+  <div id="endScreen" class="hidden">
+    <h2>게임 종료</h2>
+    <p id="finalScore"></p>
+    <p id="finalTime"></p>
+    <button id="sendScoreButton">점수전송</button>
+    <div id="response"></div>
+  </div>
+
+  <script>
+    /* --- 점수 전송 함수 (서버로 데이터 전송) --- */
+    function saveData(game, name, score, elapsedTime) {
+        const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+        const requestData = {
+            game,
+            name,
+            score: parseInt(score, 10),
+            elapsedTime: parseInt(elapsedTime, 10)
+        };
+
+        fetch(FUNCTION_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => response.json().then(data => ({ok: response.ok, data})))
+        .then(result => {
+            if (result.ok) {
+                document.getElementById('response').innerText = "성공: " + JSON.stringify(result.data, null, 2);
+            } else {
+                document.getElementById('response').innerText = "오류: " + JSON.stringify(result.data, null, 2);
+            }
+        })
+        .catch(error => {
+            console.error('요청 실패:', error);
+            document.getElementById('response').innerText = "네트워크 오류: " + error.message;
+        });
+    }
+
+    /* --- 배열 섞기 함수 --- */
+    function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    /* --- 문제 데이터 --- */
+    const questions = [
+      // [유형 A] (교정 완료)
+      {
+        question: "자연수 \\(n\\)의 약수의 개수를 \\(\\tau(n)\\)이라 할 때, \\(\\tau(48)\\times x = 40\\)를 만족하는 자연수 \\(x\\)의 최소값은?",
+        options: ["\\(4\\)", "\\(5\\)", "\\(6\\)", "\\(7\\)", "\\(8\\)"],
+        answer: "\\(4\\)"
+      },
+      {
+        question: "자연수 \\(n\\)의 약수의 개수를 \\(\\tau(n)\\)이라 할 때, \\(\\tau(36)\\times x = 27\\)를 만족하는 자연수 \\(x\\)의 최소값은?",
+        options: ["\\(2\\)", "\\(3\\)", "\\(4\\)", "\\(6\\)", "\\(8\\)"],
+        answer: "\\(3\\)"
+      },
+      {
+        question: "자연수 \\(n\\)의 약수의 개수를 \\(\\tau(n)\\)이라 할 때, \\(\\tau(60)\\times x = 36\\)를 만족하는 자연수 \\(x\\)의 최소값은?",
+        // 원래 보기에 4,5,6,7,8만 있어서 3 추가
+        options: ["\\(3\\)", "\\(5\\)", "\\(6\\)", "\\(7\\)", "\\(8\\)"],
+        answer: "\\(3\\)"
+      },
+      {
+        question: "자연수 \\(n\\)의 약수의 개수를 \\(\\tau(n)\\)이라 할 때, \\(\\tau(30)\\times x = 32\\)를 만족하는 자연수 \\(x\\)의 최소값은?",
+        options: ["\\(4\\)", "\\(5\\)", "\\(6\\)", "\\(7\\)", "\\(8\\)"],
+        answer: "\\(4\\)"
+      },
+      {
+        question: "자연수 \\(n\\)의 약수의 개수를 \\(\\tau(n)\\)이라 할 때, \\(\\tau(16)\\times x = 20\\)를 만족하는 자연수 \\(x\\)의 최소값은?",
+        options: ["\\(4\\)", "\\(5\\)", "\\(6\\)", "\\(7\\)", "\\(8\\)"],
+        answer: "\\(4\\)"
+      },
+      {
+        question: "자연수 \\(n\\)의 약수의 개수를 \\(\\tau(n)\\)이라 할 때, \\(\\tau(28)\\times x = 18\\)를 만족하는 자연수 \\(x\\)의 최소값은?",
+        // 원래 [2,4,6,7,8] 이었는데 3이 없어 바꿈
+        options: ["\\(2\\)", "\\(3\\)", "\\(4\\)", "\\(6\\)", "\\(7\\)"],
+        answer: "\\(3\\)"
+      },
+      {
+        question: "자연수 \\(n\\)의 약수의 개수를 \\(\\tau(n)\\)이라 할 때, \\(\\tau(18)\\times x = 24\\)를 만족하는 자연수 \\(x\\)의 최소값은?",
+        options: ["\\(4\\)", "\\(5\\)", "\\(6\\)", "\\(7\\)", "\\(8\\)"],
+        answer: "\\(4\\)"
+      },
+
+      // [유형 B] (변경 없음)
+      {
+        question: "가로 길이가 \\(135\\)cm, 세로 길이가 \\(75\\)cm인 직사각형을 크기가 같고 한 변의 길이가 자연수인 정사각형 타일로 빈틈없이 채울 때, 타일의 한 변의 길이가 될 수 없는 것은?",
+        options: ["\\(1\\)cm", "\\(3\\)cm", "\\(5\\)cm", "\\(9\\)cm", "\\(15\\)cm"],
+        answer: "\\(9\\)cm"
+      },
+      {
+        question: "가로 길이가 \\(144\\)cm, 세로 길이가 \\(96\\)cm인 직사각형을 크기가 같고 한 변의 길이가 자연수인 정사각형 타일로 빈틈없이 채울 때, 타일의 한 변의 길이가 될 수 없는 것은?",
+        options: ["\\(1\\)cm", "\\(4\\)cm", "\\(5\\)cm", "\\(6\\)cm", "\\(8\\)cm"],
+        answer: "\\(5\\)cm"
+      },
+      {
+        question: "가로 길이가 \\(100\\)cm, 세로 길이가 \\(60\\)cm인 직사각형을 크기가 같고 한 변의 길이가 자연수인 정사각형 타일로 빈틈없이 채울 때, 타일의 한 변의 길이가 될 수 없는 것은?",
+        options: ["\\(1\\)cm", "\\(2\\)cm", "\\(3\\)cm", "\\(5\\)cm", "\\(10\\)cm"],
+        answer: "\\(3\\)cm"
+      },
+      {
+        question: "가로 길이가 \\(210\\)cm, 세로 길이가 \\(105\\)cm인 직사각형을 크기가 같고 한 변의 길이가 자연수인 정사각형 타일로 빈틈없이 채울 때, 타일의 한 변의 길이가 될 수 없는 것은?",
+        options: ["\\(3\\)cm", "\\(5\\)cm", "\\(7\\)cm", "\\(9\\)cm", "\\(15\\)cm"],
+        answer: "\\(9\\)cm"
+      },
+      {
+        question: "가로 길이가 \\(128\\)cm, 세로 길이가 \\(96\\)cm인 직사각형을 크기가 같고 한 변의 길이가 자연수인 정사각형 타일로 빈틈없이 채울 때, 타일의 한 변의 길이가 될 수 없는 것은?",
+        options: ["\\(1\\)cm", "\\(2\\)cm", "\\(3\\)cm", "\\(4\\)cm", "\\(8\\)cm"],
+        answer: "\\(3\\)cm"
+      },
+      {
+        question: "가로 길이가 \\(84\\)cm, 세로 길이가 \\(126\\)cm인 직사각형을 크기가 같고 한 변의 길이가 자연수인 정사각형 타일로 빈틈없이 채울 때, 타일의 한 변의 길이가 될 수 없는 것은?",
+        options: ["\\(1\\)cm", "\\(2\\)cm", "\\(3\\)cm", "\\(5\\)cm", "\\(7\\)cm"],
+        answer: "\\(5\\)cm"
+      },
+      {
+        question: "가로 길이가 \\(90\\)cm, 세로 길이가 \\(54\\)cm인 직사각형을 크기가 같고 한 변의 길이가 자연수인 정사각형 타일로 빈틈없이 채울 때, 타일의 한 변의 길이가 될 수 없는 것은?",
+        options: ["\\(1\\)cm", "\\(2\\)cm", "\\(3\\)cm", "\\(4\\)cm", "\\(6\\)cm"],
+        answer: "\\(4\\)cm"
+      },
+
+      // [유형 C] (변경 없음)
+      {
+        question: "어느 버스 종점에서는 매일 오전 \\(6\\)시에 노선이 서로 다른 세 종류의 버스가 동시에 출발한다. 세 종류의 버스의 배차 간격이 각각 \\(4\\)분, \\(6\\)분, \\(8\\)분일 때, 오전 \\(7:00\\)부터 \\(10:00\\)까지 세 종류의 버스가 동시에 출발하는 횟수는 몇 번인가?",
+        options: ["\\(5\\)번", "\\(6\\)번", "\\(7\\)번", "\\(8\\)번", "\\(9\\)번"],
+        answer: "\\(8\\)번"
+      },
+      {
+        question: "어느 버스 종점에서는 매일 오전 \\(6\\)시에 노선이 서로 다른 세 종류의 버스가 동시에 출발한다. 세 종류의 버스의 배차 간격이 각각 \\(3\\)분, \\(4\\)분, \\(6\\)분일 때, 오전 \\(6:30\\)부터 \\(7:30\\)까지 세 종류의 버스가 동시에 출발하는 횟수는 몇 번인가?",
+        options: ["\\(3\\)번", "\\(4\\)번", "\\(5\\)번", "\\(6\\)번", "\\(7\\)번"],
+        answer: "\\(5\\)번"
+      },
+      {
+        question: "어느 버스 종점에서는 매일 오전 \\(6\\)시에 노선이 서로 다른 세 종류의 버스가 동시에 출발한다. 세 종류의 배차 간격이 각각 \\(5\\)분, \\(10\\)분, \\(15\\)분일 때, 오전 \\(7:00\\)부터 \\(8:00\\)까지 동시에 출발하는 횟수는 몇 번인가?",
+        options: ["\\(2\\)번", "\\(3\\)번", "\\(4\\)번", "\\(5\\)번", "\\(6\\)번"],
+        answer: "\\(3\\)번"
+      },
+      {
+        question: "어느 버스 종점에서는 매일 오전 \\(6\\)시에 노선이 서로 다른 세 종류의 버스가 동시에 출발한다. 세 종류의 배차 간격이 각각 \\(4\\)분, \\(5\\)분, \\(6\\)분일 때, 오전 \\(7:00\\)부터 \\(10:00\\)까지 동시에 출발하는 횟수는 몇 번인가?",
+        options: ["\\(3\\)번", "\\(4\\)번", "\\(5\\)번", "\\(6\\)번", "\\(7\\)번"],
+        answer: "\\(4\\)번"
+      },
+      {
+        question: "어느 버스 종점에서는 매일 오전 \\(6\\)시에 노선이 서로 다른 세 종류의 버스가 동시에 출발한다. 세 종류의 배차 간격이 각각 \\(6\\)분, \\(8\\)분, \\(10\\)분일 때, 오전 \\(7:00\\)부터 \\(11:00\\)까지 동시에 출발하는 횟수는 몇 번인가?",
+        options: ["\\(1\\)번", "\\(2\\)번", "\\(3\\)번", "\\(4\\)번", "\\(5\\)번"],
+        answer: "\\(2\\)번"
+      },
+      {
+        question: "어느 버스 종점에서는 매일 오전 \\(6\\)시에 노선이 서로 다른 세 종류의 버스가 동시에 출발한다. 세 종류의 배차 간격이 각각 \\(2\\)분, \\(3\\)분, \\(4\\)분일 때, 오전 \\(6:20\\)부터 \\(7:00\\)까지 동시에 출발하는 횟수는 몇 번인가?",
+        options: ["\\(3\\)번", "\\(4\\)번", "\\(5\\)번", "\\(6\\)번", "\\(7\\)번"],
+        answer: "\\(4\\)번"
+      },
+      {
+        question: "어느 버스 종점에서는 매일 오전 \\(6\\)시에 노선이 서로 다른 세 종류의 버스가 동시에 출발한다. 세 종류의 배차 간격이 각각 \\(7\\)분, \\(8\\)분, \\(9\\)분일 때, 오전 \\(10:00\\)부터 \\(18:00\\)까지 동시에 출발하는 횟수는 몇 번인가?",
+        options: ["\\(0\\)번", "\\(1\\)번", "\\(2\\)번", "\\(3\\)번", "\\(4\\)번"],
+        answer: "\\(1\\)번"
+      },
+
+      // [유형 D] (변경 없음)
+      {
+        question: "자연수 \\(144\\)에 어떤 자연수를 곱하여 어떤 자연수의 세제곱이 되도록 할 때, 곱할 수 있는 자연수 중 \\(100\\) 미만의 수의 개수는?",
+        options: ["\\(1\\)개", "\\(2\\)개", "\\(3\\)개", "\\(4\\)개", "\\(5\\)개"],
+        answer: "\\(2\\)개"
+      },
+      {
+        question: "자연수 \\(54\\)에 어떤 자연수를 곱하여 어떤 자연수의 세제곱이 되도록 할 때, 곱할 수 있는 자연수 중 \\(150\\) 미만의 수의 개수는?",
+        options: ["\\(1\\)개", "\\(2\\)개", "\\(3\\)개", "\\(4\\)개", "\\(5\\)개"],
+        answer: "\\(3\\)개"
+      },
+      {
+        question: "자연수 \\(200\\)에 어떤 자연수를 곱하여 어떤 자연수의 세제곱이 되도록 할 때, 곱할 수 있는 자연수 중 \\(200\\) 미만의 수의 개수는?",
+        options: ["\\(1\\)개", "\\(2\\)개", "\\(3\\)개", "\\(4\\)개", "\\(5\\)개"],
+        answer: "\\(3\\)개"
+      },
+      {
+        question: "자연수 \\(250\\)에 어떤 자연수를 곱하여 어떤 자연수의 세제곱이 되도록 할 때, 곱할 수 있는 자연수 중 \\(300\\) 미만의 수의 개수는?",
+        options: ["\\(2\\)개", "\\(3\\)개", "\\(4\\)개", "\\(5\\)개", "\\(6\\)개"],
+        answer: "\\(4\\)개"
+      },
+      {
+        question: "자연수 \\(98\\)에 어떤 자연수를 곱하여 어떤 자연수의 세제곱이 되도록 할 때, 곱할 수 있는 자연수 중 \\(150\\) 미만의 수의 개수는?",
+        options: ["\\(0\\)개", "\\(1\\)개", "\\(2\\)개", "\\(3\\)개", "\\(4\\)개"],
+        answer: "\\(1\\)개"
+      },
+      {
+        question: "자연수 \\(72\\)에 어떤 자연수를 곱하여 어떤 자연수의 세제곱이 되도록 할 때, 곱할 수 있는 자연수 중 \\(200\\) 미만의 수의 개수는?",
+        options: ["\\(2\\)개", "\\(3\\)개", "\\(4\\)개", "\\(5\\)개", "\\(6\\)개"],
+        answer: "\\(4\\)개"
+      },
+      {
+        question: "자연수 \\(80\\)에 어떤 자연수를 곱하여 어떤 자연수의 세제곱이 되도록 할 때, 곱할 수 있는 자연수 중 \\(200\\) 미만의 수의 개수는?",
+        options: ["\\(0\\)개", "\\(1\\)개", "\\(2\\)개", "\\(3\\)개", "\\(4\\)개"],
+        answer: "\\(1\\)개"
+      },
+
+      // [유형 E] (변경 없음)
+      {
+        question: "어느 놀이공원에서 입장권 번호가 \\(30\\)의 배수인 고객에게 음료수를, \\(45\\)의 배수인 고객에게 팝콘을 무료로 제공할 때, 행사일에 \\(1000\\)명의 고객이 입장했다면, 두 가지 모두 제공받은 고객의 수는?",
+        options: ["\\(6\\)명", "\\(11\\)명", "\\(12\\)명", "\\(34\\)명", "\\(67\\)명"],
+        answer: "\\(11\\)명"
+      },
+      {
+        question: "어느 놀이공원에서 입장권 번호가 \\(20\\)의 배수인 고객에게 음료수를, \\(30\\)의 배수인 고객에게 팝콘을 무료로 제공할 때, 행사일에 \\(500\\)명의 고객이 입장했다면, 두 가지 모두 제공받은 고객의 수는?",
+        options: ["\\(6\\)명", "\\(7\\)명", "\\(8\\)명", "\\(9\\)명", "\\(10\\)명"],
+        answer: "\\(8\\)명"
+      },
+      {
+        question: "어느 놀이공원에서 입장권 번호가 \\(25\\)의 배수인 고객에게 음료수를, \\(40\\)의 배수인 고객에게 팝콘을 무료로 제공할 때, 행사일에 \\(800\\)명의 고객이 입장했다면, 두 가지 모두 제공받은 고객의 수는?",
+        options: ["\\(2\\)명", "\\(3\\)명", "\\(4\\)명", "\\(5\\)명", "\\(6\\)명"],
+        answer: "\\(4\\)명"
+      },
+      {
+        question: "어느 놀이공원에서 입장권 번호가 \\(12\\)의 배수인 고객에게 음료수를, \\(18\\)의 배수인 고객에게 팝콘을 무료로 제공할 때, 행사일에 \\(600\\)명의 고객이 입장했다면, 두 가지 모두 제공받은 고객의 수는?",
+        options: ["\\(14\\)명", "\\(15\\)명", "\\(16\\)명", "\\(17\\)명", "\\(18\\)명"],
+        answer: "\\(16\\)명"
+      },
+      {
+        question: "어느 놀이공원에서 입장권 번호가 \\(14\\)의 배수인 고객에게 음료수를, \\(21\\)의 배수인 고객에게 팝콘을 무료로 제공할 때, 행사일에 \\(700\\)명의 고객이 입장했다면, 두 가지 모두 제공받은 고객의 수는?",
+        options: ["\\(14\\)명", "\\(15\\)명", "\\(16\\)명", "\\(17\\)명", "\\(18\\)명"],
+        answer: "\\(16\\)명"
+      },
+      {
+        question: "어느 놀이공원에서 입장권 번호가 \\(16\\)의 배수인 고객에게 음료수를, \\(24\\)의 배수인 고객에게 팝콘을 무료로 제공할 때, 행사일에 \\(1000\\)명의 고객이 입장했다면, 두 가지 모두 제공받은 고객의 수는?",
+        options: ["\\(18\\)명", "\\(19\\)명", "\\(20\\)명", "\\(21\\)명", "\\(22\\)명"],
+        answer: "\\(20\\)명"
+      },
+      {
+        question: "어느 놀이공원에서 입장권 번호가 \\(18\\)의 배수인 고객에게 음료수를, \\(27\\)의 배수인 고객에게 팝콘을 무료로 제공할 때, 행사일에 \\(900\\)명의 고객이 입장했다면, 두 가지 모두 제공받은 고객의 수는?",
+        options: ["\\(14\\)명", "\\(15\\)명", "\\(16\\)명", "\\(17\\)명", "\\(18\\)명"],
+        answer: "\\(16\\)명"
+      }
+    ];
+
+    // --- 게임 관련 전역 변수 ---
+    let currentQuestionIndex = 0;
+    let score = 0;
+    let wrongCount = 0;
+    let totalElapsedTime = 0;
+    let questionStartTime;
+    let questionTimer;
+    let currentTimeLimit = 0; // 초 단위, 0이면 제한 없음
+    let difficultyScore = 0;
+    let playerName = "";
+
+    const startScreen = document.getElementById("startScreen");
+    const gameScreen   = document.getElementById("gameScreen");
+    const endScreen    = document.getElementById("endScreen");
+    const scoreDisplay = document.getElementById("scoreDisplay");
+    const chanceDisplay= document.getElementById("chanceDisplay");
+    const timeDisplay  = document.getElementById("timeDisplay");
+    const energyBar    = document.getElementById("energyBar");
+    const questionContainer = document.getElementById("questionContainer");
+    const optionsContainer  = document.getElementById("optionsContainer");
+    const nextButton   = document.getElementById("nextButton");
+    const feedback     = document.getElementById("feedback");
+
+    let gameInterval;
+
+    // 시작 시 문제 배열 섞기
+    shuffleArray(questions);
+
+    document.getElementById("startButton").addEventListener("click", function() {
+      playerName = document.getElementById("playerName").value.trim();
+      if (!playerName) {
+        alert("이름을 입력하세요.");
+        return;
+      }
+      const difficulty = document.getElementById("difficulty").value;
+      // 난이도에 따른 시간 제한 및 문제당 점수 설정
+      switch(difficulty) {
+        case "최상":
+          currentTimeLimit = 20;
+          difficultyScore = 20;
+          break;
+        case "상":
+          currentTimeLimit = 30;
+          difficultyScore = 15;
+          break;
+        case "중":
+          currentTimeLimit = 40;
+          difficultyScore = 13;
+          break;
+        case "하":
+          currentTimeLimit = 0;
+          difficultyScore = 10;
+          break;
+      }
+      startScreen.classList.add("hidden");
+      gameScreen.classList.remove("hidden");
+      questionStartTime = Date.now();
+      startGameTimer();
+      showQuestion();
+    });
+
+    // 전체 게임 시간 업데이트
+    function startGameTimer() {
+      gameInterval = setInterval(function() {
+        totalElapsedTime = Math.floor((Date.now() - questionStartTime) / 1000);
+        timeDisplay.innerText = "총 게임 시간: " + totalElapsedTime + "초";
+      }, 1000);
+    }
+
+    // 문제 및 보기를 화면에 표시 (MathJax.typeset() 호출)
+    function showQuestion() {
+      feedback.innerText = "";
+      nextButton.disabled = true;
+      // 모든 문제를 소진하면 문제 배열을 다시 섞어 계속 출제
+      if (currentQuestionIndex >= questions.length) {
+        currentQuestionIndex = 0;
+        shuffleArray(questions);
+      }
+      const q = questions[currentQuestionIndex];
+      questionContainer.innerHTML = "<p>" + q.question + "</p>";
+      // 보기 섞기
+      const options = q.options.slice();
+      shuffleArray(options);
+      optionsContainer.innerHTML = "";
+      options.forEach(option => {
+        const btn = document.createElement("button");
+        btn.className = "option-button";
+        btn.innerHTML = option;
+        btn.addEventListener("click", function() {
+          // 답변 후 중복 클릭 방지
+          if (nextButton.disabled === false) return;
+          clearInterval(questionTimer);
+          if (option === q.answer) {
+            feedback.innerText = "정답!";
+            score += difficultyScore;
+            scoreDisplay.innerText = "점수: " + score;
+          } else {
+            feedback.innerText = "오답! 정답은 " + q.answer + "입니다.";
+            wrongCount++;
+            chanceDisplay.innerText = "남은 기회: " + (3 - wrongCount);
+            if (wrongCount >= 3) { endGame(); return; }
+          }
+          nextButton.disabled = false;
+          MathJax.typeset();
+        });
+        optionsContainer.appendChild(btn);
+      });
+      MathJax.typeset();
+      // 시간 제한이 있을 경우 에너지바 타이머 시작
+      if (currentTimeLimit > 0) {
+        let timeLeft = currentTimeLimit;
+        energyBar.style.width = "100%";
+        questionTimer = setInterval(function() {
+          timeLeft--;
+          let percent = (timeLeft / currentTimeLimit) * 100;
+          energyBar.style.width = percent + "%";
+          if (timeLeft <= 0) {
+            clearInterval(questionTimer);
+            feedback.innerText = "시간 초과! 정답은 " + q.answer + "입니다.";
+            wrongCount++;
+            chanceDisplay.innerText = "남은 기회: " + (3 - wrongCount);
+            nextButton.disabled = false;
+            if (wrongCount >= 3) { endGame(); return; }
+          }
+        }, 1000);
+      } else {
+        // 난이도가 "하"일 때 제한 시간 없음
+        energyBar.style.width = "100%";
+      }
+    }
+
+    nextButton.addEventListener("click", function() {
+      currentQuestionIndex++;
+      showQuestion();
+    });
+
+    function endGame() {
+      clearInterval(gameInterval);
+      clearInterval(questionTimer);
+      gameScreen.classList.add("hidden");
+      endScreen.classList.remove("hidden");
+      document.getElementById("finalScore").innerText = "최종 점수: " + score;
+      document.getElementById("finalTime").innerText = "총 게임 시간: " + totalElapsedTime + "초";
+    }
+
+    document.getElementById("sendScoreButton").addEventListener("click", function() {
+      saveData("약수와 배수 심화(2)", playerName, score, totalElapsedTime);
+    });
+  </script>
+</body>
+</html>
